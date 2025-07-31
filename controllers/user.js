@@ -1,0 +1,136 @@
+import { inngest } from "../inngest/client.js";
+import User from "../models/user.js";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+
+export const signup = async (req, res) => {
+  const { email, password, sills = [] } = req.body;
+  try {
+    //check is email already exist
+    const user = await User.findOne({ email });
+    if (user) {
+      return res
+        .status(401)
+        .json({ error: "Sign-up failed! Email already exist" });
+    }
+
+    //process to add new email(user) in DB
+    const hashedPassword = bcrypt.hash(password, 10);
+    const newUser = await User.create({
+      email,
+      password: hashedPassword,
+      skills,
+    });
+
+    //Now Fire inngest event
+    await inngest.send({
+      name: "user/signup",
+      data: { email },
+    });
+
+    //create jwt token
+    const token = jwt.sign(
+      { _id: newUser._id, role: newUser.role },
+      process.env.JWT_SECRET
+    );
+
+    res.json({ newUser, token });
+  } catch (error) {
+    res.status(500).json({ error: "Sign-up failed!", ErrorMsg: error.message });
+  }
+};
+
+export const login = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    //check is the user exist in db
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "Email not found in DB" });
+    }
+
+    //now validate password
+    const matchPassword = await bcrypt.compare(password, user.password);
+    if (!matchPassword) {
+      return res.status(500).json({ error: "Wrong Password!" });
+    }
+
+    //if all credentials correct then create jwt token
+    const token = jwt.sign(
+      { _id: user._id, role: user.role },
+      process.env.JWT_SECRET
+    );
+
+    res.json({ user, token });
+  } catch (error) {
+    res.status(500).json({ error: "Login failed!", ErrorMsg: error.message });
+  }
+};
+
+export const logout = async (req, res) => {
+  try {
+    //check user atleast authenticated or not
+    const token = req.headers.authorization.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized- No token" });
+    }
+
+    //verify token just for fun
+    jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
+      if (error) {
+        return res.status(401).json({ error: "Failed to verify jwt token" });
+      }
+    });
+
+    return res.json({ message: "Logout Successfully!" });
+  } catch (error) {
+    res.status(500).json({ error: "Logout failed!", ErrorMsg: error.message });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  const { email, role, skills = [] } = req.body;
+  try {
+    //update can only perform by admin
+    if (req.user?.role !== "admin") {
+      return res.status(401).json({ error: "Failed! Only admin can update user" });
+    }
+
+    //if user not found in DB
+    const userDetails = await User.findOne({ email });
+    if (!userDetails) {
+      return res.status(404).json({ error: "Failed! User email not found in DB" });
+    }
+
+    //if user found in DB
+    await User.updateOne(
+      { email },
+      { skills: skills.length ? skills : userDetails.skills, role }
+    );
+
+    return res.json({message: "User Details Updated Successfully."})
+
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ error: "Failed to Update User!", ErrorMsg: error.message });
+  }
+};
+
+export const getAllUser = async (req, res) => {
+  try {
+    //only admin can see all registered user
+    if(req.user.role !== "admin"){
+      res.status(401).json({ error: "Failed! Only admin can see all registered users" });
+    }
+
+    const allUsers = await User.find().select("-password")
+    return res.json(allUsers);
+    
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to get all Users!", ErrorMsg: error.message });
+  }
+}
