@@ -1,7 +1,7 @@
-const allTickets = () => {
+const AllTickets = () => {
     return(
-        <div>allTickets</div>
+        <div>AllTickets</div>
     )
 }
 
-export default allTickets;
+export default AllTickets;

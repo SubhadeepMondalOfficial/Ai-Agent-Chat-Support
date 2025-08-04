@@ -4,7 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 export const signup = async (req, res) => {
-  const { email, password, sills = [] } = req.body;
+  const { email, password, skills = [] } = req.body;
   try {
     //check is email already exist
     const user = await User.findOne({ email });
@@ -15,7 +15,7 @@ export const signup = async (req, res) => {
     }
 
     //process to add new email(user) in DB
-    const hashedPassword = bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
       email,
       password: hashedPassword,
@@ -70,19 +70,20 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
-    //check user atleast authenticated or not
-    const token = req.headers.authorization.split(" ")[1];
-    if (!token) {
-      return res.status(401).json({ error: "Unauthorized- No token" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized - No token provided" });
     }
 
-    //verify token just for fun
-    jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
-      if (error) {
-        return res.status(401).json({ error: "Failed to verify jwt token" });
-      }
-    });
+    const token = authHeader.split(" ")[1]; //splitting because 1st part is Bearer and 2nd part is token value
 
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    // In real-world, you'd handle token blacklisting or set cookie expiration here
     return res.json({ message: "Logout Successfully!" });
   } catch (error) {
     res.status(500).json({ error: "Logout failed!", ErrorMsg: error.message });
